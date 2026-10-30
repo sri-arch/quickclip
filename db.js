@@ -400,3 +400,4 @@ module.exports = {
   clearUnpinned,
   getStats
 };
+

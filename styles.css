@@ -178,6 +178,27 @@ body {
   background-color: var(--accent-light);
   color: var(--accent-terracotta);
   border: 1px solid rgba(224, 122, 95, 0.2);
+  transition: all 0.2s ease;
+}
+
+.badge-status.badge-online {
+  background-color: #EDF7F1;
+  color: #2D6A4F;
+  border-color: rgba(45, 106, 79, 0.28);
+}
+
+.badge-status.badge-offline {
+  background-color: #F7F5F0;
+  color: var(--text-muted);
+  border-color: var(--border-warm);
+}
+
+.pulse-dot.online {
+  background-color: #2D6A4F;
+}
+
+.pulse-ring.online {
+  background-color: #2D6A4F;
 }
 
 .header-actions {

@@ -1,14 +1,15 @@
 /**
  * QuickClip - Local-First Clipboard Vault & Snippet Manager
- * Vanilla JavaScript Implementation
+ * Connected to SQLite REST API Backend with Local Cache Resilience.
  * Zero external dependencies. Zero emojis.
  */
 
 (function () {
   'use strict';
 
-  // Storage key
+  // Storage key for local offline cache
   const STORAGE_KEY = 'quickclip_vault_data';
+  const API_BASE = ''; // Same origin (relative)
 
   // DOM Elements
   const captureInput = document.getElementById('capture-input');
@@ -17,6 +18,10 @@
   const clearUnpinnedBtn = document.getElementById('clear-unpinned-btn');
   const autoDetectBadge = document.getElementById('auto-detect-badge');
   const charCounter = document.getElementById('char-counter');
+  const backendStatusBadge = document.getElementById('backend-status-badge');
+  const pulseDot = document.getElementById('pulse-dot');
+  const pulseRing = document.getElementById('pulse-ring');
+  const storageStatusNote = document.getElementById('storage-status-note');
 
   const searchInput = document.getElementById('search-input');
   const searchClearBtn = document.getElementById('search-clear-btn');
@@ -49,38 +54,7 @@
   let activeFilter = 'all';
   let searchQuery = '';
   let recentlyAddedId = null;
-
-  // Initial Seed Data (if vault is empty)
-  const SEED_DATA = [
-    {
-      id: 'seed-1',
-      text: '#E07A5F',
-      category: 'Color',
-      isPinned: true,
-      createdAt: Date.now() - 1000 * 60 * 12
-    },
-    {
-      id: 'seed-2',
-      text: 'const saveVault = (items) => {\n  localStorage.setItem("quickclip_vault_data", JSON.stringify(items));\n};',
-      category: 'Code',
-      isPinned: true,
-      createdAt: Date.now() - 1000 * 60 * 45
-    },
-    {
-      id: 'seed-3',
-      text: 'https://developer.mozilla.org/en-US/docs/Web/API/Clipboard_API',
-      category: 'Link',
-      isPinned: false,
-      createdAt: Date.now() - 1000 * 60 * 120
-    },
-    {
-      id: 'seed-4',
-      text: 'Welcome to QuickClip. Press "Sync Clipboard" or press Ctrl+V anywhere to capture snippets automatically.',
-      category: 'Text',
-      isPinned: false,
-      createdAt: Date.now() - 1000 * 60 * 360
-    }
-  ];
+  let isBackendConnected = false;
 
   /* ==========================================================================
      Auto-Categorization Skill (Regex Engine)
@@ -141,44 +115,135 @@
   }
 
   /* ==========================================================================
-     Local Storage Connector
+     Backend API Client
      ========================================================================== */
-  function loadVault() {
+  const ApiClient = {
+    async getClips() {
+      const response = await fetch(`${API_BASE}/api/clips`, {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+      return await response.json();
+    },
+
+    async createClip(text, category = 'auto') {
+      const response = await fetch(`${API_BASE}/api/clips`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ text, category })
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Failed to create clip' }));
+        throw new Error(error.error || 'Failed to create clip');
+      }
+      return await response.json();
+    },
+
+    async togglePin(id) {
+      const response = await fetch(`${API_BASE}/api/clips/${encodeURIComponent(id)}/pin`, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' }
+      });
+      if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+      return await response.json();
+    },
+
+    async deleteClip(id) {
+      const response = await fetch(`${API_BASE}/api/clips/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { 'Accept': 'application/json' }
+      });
+      if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+      return await response.json();
+    },
+
+    async clearUnpinned() {
+      const response = await fetch(`${API_BASE}/api/clips/clear-unpinned`, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' }
+      });
+      if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+      return await response.json();
+    }
+  };
+
+  /**
+   * Update UI status badge for backend connection
+   */
+  function setConnectionStatus(connected) {
+    isBackendConnected = connected;
+    if (backendStatusBadge) {
+      if (connected) {
+        backendStatusBadge.textContent = 'SQLite Backend Active';
+        backendStatusBadge.className = 'badge-status badge-online';
+        if (pulseDot) pulseDot.className = 'pulse-dot online';
+        if (pulseRing) pulseRing.className = 'pulse-ring online';
+        if (storageStatusNote) {
+          storageStatusNote.textContent = 'Synchronized with SQLite Backend (quickclip.db)';
+        }
+      } else {
+        backendStatusBadge.textContent = 'Local Cache (Offline)';
+        backendStatusBadge.className = 'badge-status badge-offline';
+        if (pulseDot) pulseDot.className = 'pulse-dot';
+        if (pulseRing) pulseRing.className = 'pulse-ring';
+        if (storageStatusNote) {
+          storageStatusNote.textContent = 'Offline: Changes stored in browser localStorage';
+        }
+      }
+    }
+  }
+
+  /* ==========================================================================
+     Vault Synchronization & Storage
+     ========================================================================== */
+  async function loadVault() {
+    try {
+      // 1. Try to fetch from backend
+      const data = await ApiClient.getClips();
+      clips = data.clips || [];
+      setConnectionStatus(true);
+      // Cache locally
+      saveLocalCache();
+    } catch (err) {
+      console.warn('Backend unavailable, falling back to local storage cache:', err.message);
+      setConnectionStatus(false);
+      loadLocalCache();
+    }
+    renderFeed();
+  }
+
+  function loadLocalCache() {
     try {
       const data = localStorage.getItem(STORAGE_KEY);
       if (data) {
         clips = JSON.parse(data);
       } else {
-        // Seed initial data
-        clips = [...SEED_DATA];
-        saveVault();
+        clips = [];
       }
     } catch (err) {
-      console.error('Failed to parse QuickClip vault data:', err);
-      clips = [...SEED_DATA];
+      console.error('Failed to parse local vault cache:', err);
+      clips = [];
     }
   }
 
-  function saveVault() {
+  function saveLocalCache() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(clips));
     } catch (err) {
-      console.error('Failed to save QuickClip vault data:', err);
-      showToast('Vault storage limit reached or disabled.');
+      console.error('Failed to cache vault data locally:', err);
     }
     updateCounts();
   }
 
   /* ==========================================================================
-     Clipboard Connector
+     Clipboard & Snippet Actions
      ========================================================================== */
   /**
-   * Add a clip to the vault
+   * Add a clip to the vault (Backend first, fallback local)
    * @param {string} text
    * @param {boolean} [animate=true]
-   * @returns {object|null}
    */
-  function addClip(text, animate = true) {
+  async function addClip(text, animate = true) {
     if (!text || !text.trim()) {
       showToast('Cannot save an empty clip.');
       return null;
@@ -186,16 +251,49 @@
 
     const trimmed = text.trim();
 
-    // If identical snippet already exists, move to top or notify
+    // If backend is connected, perform server call
+    if (isBackendConnected) {
+      try {
+        const result = await ApiClient.createClip(trimmed);
+        const clip = result.clip;
+
+        if (result.action === 'updated') {
+          // Existing clip bumped
+          const existingIndex = clips.findIndex(c => c.id === clip.id);
+          if (existingIndex !== -1) {
+            clips.splice(existingIndex, 1);
+          }
+          clips.unshift(clip);
+          saveLocalCache();
+          renderFeed();
+          highlightClip(clip.id);
+          showToast('Existing clip updated to top.');
+          return clip;
+        }
+
+        // New clip created
+        if (animate) recentlyAddedId = clip.id;
+        clips.unshift(clip);
+        saveLocalCache();
+        renderFeed();
+        showToast('Clip saved to vault.');
+        return clip;
+
+      } catch (err) {
+        console.error('Failed to add clip via backend:', err);
+        showToast('Backend error: ' + err.message);
+        // Fall back to local
+      }
+    }
+
+    // Local fallback logic
     const existingIndex = clips.findIndex(c => c.text.trim() === trimmed);
     if (existingIndex !== -1) {
       const existing = clips[existingIndex];
-      // Bump existing clip timestamp
       existing.createdAt = Date.now();
-      // Move to top of clips array
       clips.splice(existingIndex, 1);
       clips.unshift(existing);
-      saveVault();
+      saveLocalCache();
       renderFeed();
       highlightClip(existing.id);
       showToast('Existing clip updated to top.');
@@ -210,14 +308,11 @@
       createdAt: Date.now()
     };
 
-    if (animate) {
-      recentlyAddedId = newClip.id;
-    }
-
+    if (animate) recentlyAddedId = newClip.id;
     clips.unshift(newClip);
-    saveVault();
+    saveLocalCache();
     renderFeed();
-    showToast('Clip saved to vault.');
+    showToast('Clip saved to local vault.');
     return newClip;
   }
 
@@ -236,7 +331,7 @@
         showToast('System clipboard is currently empty.');
         return;
       }
-      addClip(text, true);
+      await addClip(text, true);
     } catch (err) {
       console.warn('Clipboard read failed:', err);
       showToast('Clipboard access was blocked or denied by browser.');
@@ -244,10 +339,7 @@
   }
 
   /**
-   * Copy clip content to clipboard with feedback
-   * @param {string} text
-   * @param {HTMLElement} [btnElement]
-   * @param {HTMLElement} [cardElement]
+   * Copy clip content to clipboard with visual feedback
    */
   async function copyClip(text, btnElement, cardElement) {
     try {
@@ -283,36 +375,68 @@
 
   /**
    * Toggle Pin state of a clip
-   * @param {string} id
    */
-  function togglePin(id) {
+  async function togglePin(id) {
     const clip = clips.find(c => c.id === id);
     if (!clip) return;
 
-    clip.isPinned = !clip.isPinned;
-    saveVault();
+    const previousState = clip.isPinned;
+    clip.isPinned = !previousState;
+    saveLocalCache();
     renderFeed();
+
+    if (isBackendConnected) {
+      try {
+        const updated = await ApiClient.togglePin(id);
+        clip.isPinned = updated.isPinned;
+        saveLocalCache();
+        renderFeed();
+      } catch (err) {
+        console.error('Failed to toggle pin on backend:', err);
+        // Rollback on error
+        clip.isPinned = previousState;
+        saveLocalCache();
+        renderFeed();
+        showToast('Failed to sync pin with backend.');
+        return;
+      }
+    }
+
     showToast(clip.isPinned ? 'Snippet pinned to top.' : 'Snippet unpinned.');
   }
 
   /**
    * Delete a single clip
-   * @param {string} id
    */
-  function deleteClip(id) {
+  async function deleteClip(id) {
     const clipIndex = clips.findIndex(c => c.id === id);
     if (clipIndex === -1) return;
 
-    clips.splice(clipIndex, 1);
-    saveVault();
+    const removed = clips.splice(clipIndex, 1)[0];
+    saveLocalCache();
     renderFeed();
+
+    if (isBackendConnected) {
+      try {
+        await ApiClient.deleteClip(id);
+      } catch (err) {
+        console.error('Failed to delete clip on backend:', err);
+        // Rollback
+        clips.splice(clipIndex, 0, removed);
+        saveLocalCache();
+        renderFeed();
+        showToast('Failed to delete snippet from backend.');
+        return;
+      }
+    }
+
     showToast('Clip deleted.');
   }
 
   /**
    * Clear all unpinned history
    */
-  function clearUnpinned() {
+  async function clearUnpinned() {
     const pinnedClips = clips.filter(c => c.isPinned);
     const removedCount = clips.length - pinnedClips.length;
 
@@ -321,10 +445,25 @@
       return;
     }
 
+    const previousClips = [...clips];
     clips = pinnedClips;
-    saveVault();
+    saveLocalCache();
     renderFeed();
-    showToast(`Cleared ${removedCount} unpinned ${removedCount === 1 ? 'clip' : 'clips'}.`);
+
+    if (isBackendConnected) {
+      try {
+        const result = await ApiClient.clearUnpinned();
+        showToast(`Cleared ${result.clearedCount} unpinned snippet(s).`);
+      } catch (err) {
+        console.error('Failed to clear unpinned on backend:', err);
+        clips = previousClips;
+        saveLocalCache();
+        renderFeed();
+        showToast('Failed to clear unpinned snippets on backend.');
+      }
+    } else {
+      showToast(`Cleared ${removedCount} unpinned ${removedCount === 1 ? 'clip' : 'clips'}.`);
+    }
   }
 
   /* ==========================================================================
@@ -361,11 +500,9 @@
 
   /**
    * Escape HTML to prevent XSS
-   * @param {string} str
-   * @returns {string}
    */
   function escapeHTML(str) {
-    return str
+    return String(str)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
@@ -398,8 +535,6 @@
 
   /**
    * Render single clip card element
-   * @param {object} clip
-   * @returns {HTMLElement}
    */
   function createClipCardElement(clip) {
     const card = document.createElement('article');
@@ -409,7 +544,6 @@
 
     if (clip.id === recentlyAddedId) {
       card.classList.add('animate-entrance');
-      // Reset flag after entrance
       setTimeout(() => {
         card.classList.remove('animate-entrance');
         if (recentlyAddedId === clip.id) recentlyAddedId = null;
@@ -649,7 +783,6 @@
 
   /**
    * Highlight a clip after updating or finding duplicate
-   * @param {string} id
    */
   function highlightClip(id) {
     const el = document.getElementById(id);
@@ -704,7 +837,7 @@
   });
 
   // Add clip button
-  addClipBtn.addEventListener('click', () => {
+  addClipBtn.addEventListener('click', async () => {
     const text = captureInput.value;
     if (!text.trim()) {
       showToast('Please type or paste text before adding.');
@@ -712,7 +845,7 @@
       return;
     }
 
-    addClip(text, true);
+    await addClip(text, true);
     captureInput.value = '';
     charCounter.textContent = '0 chars';
     autoDetectBadge.textContent = 'Auto-Detect: Text';
@@ -763,8 +896,7 @@
   });
 
   // Global paste handler: capture clipboard text anywhere on the page
-  document.addEventListener('paste', (e) => {
-    // If the user is typing in the capture textarea or search input, let default paste proceed
+  document.addEventListener('paste', async (e) => {
     const activeEl = document.activeElement;
     if (activeEl === captureInput || activeEl === searchInput) {
       return;
@@ -772,11 +904,11 @@
 
     const pastedText = e.clipboardData ? e.clipboardData.getData('text') : '';
     if (pastedText && pastedText.trim()) {
-      addClip(pastedText, true);
+      await addClip(pastedText, true);
     }
   });
 
-  // Global keydown handler: Escape clears search
+  // Global keydown handler: Escape clears search or closes modal
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       if (!confirmModal.classList.contains('hidden')) {
@@ -812,9 +944,9 @@
     }
   });
 
-  modalConfirmBtn.addEventListener('click', () => {
+  modalConfirmBtn.addEventListener('click', async () => {
     confirmModal.classList.add('hidden');
-    clearUnpinned();
+    await clearUnpinned();
   });
 
   // Periodic relative timestamp refresher (every 30 seconds)
@@ -833,6 +965,5 @@
 
   // Initialize
   loadVault();
-  renderFeed();
 
 })();

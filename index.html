@@ -29,12 +29,12 @@
     <header class="app-header">
       <div class="header-branding">
         <div class="title-row">
-          <span class="live-pulse-container" title="Clipboard Listener Active">
-            <span class="pulse-ring"></span>
-            <span class="pulse-dot"></span>
+          <span class="live-pulse-container" id="status-pulse" title="Backend &amp; Clipboard Listener Active">
+            <span class="pulse-ring" id="pulse-ring"></span>
+            <span class="pulse-dot" id="pulse-dot"></span>
           </span>
           <h1 class="app-title">QuickClip</h1>
-          <span class="badge-status">Vault Active</span>
+          <span class="badge-status" id="backend-status-badge">Connecting...</span>
         </div>
         <p class="app-subtitle">Local Clipboard Vault</p>
       </div>
@@ -194,8 +194,8 @@
         <span class="footer-divider">|</span>
         <span class="footer-key">Esc</span> Reset search
       </div>
-      <div class="footer-storage-note">
-        All records stay private and stored locally in your browser.
+      <div class="footer-storage-note" id="storage-status-note">
+        Synchronized with SQLite Backend (quickclip.db)
       </div>
     </footer>
 

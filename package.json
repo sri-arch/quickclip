@@ -1,0 +1,24 @@
+{
+  "name": "quickclip",
+  "version": "1.0.0",
+  "description": "Local Clipboard Vault & Snippet Manager with persistent SQLite Backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node test-backend.js"
+  },
+  "keywords": [
+    "clipboard",
+    "vault",
+    "snippets",
+    "sqlite",
+    "productivity"
+  ],
+  "author": "QuickClip Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
+
