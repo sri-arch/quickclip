@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickClip - Local Clipboard Vault</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- Clear Confirmation Dialog -->
+  <div id="confirm-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-card">
+      <h3 id="modal-title" class="modal-title">Clear Unpinned History</h3>
+      <p class="modal-description">Are you sure you want to remove all unpinned clips? Pinned clips will remain saved safely in your vault.</p>
+      <div class="modal-actions">
+        <button id="modal-cancel-btn" class="btn btn-secondary">Cancel</button>
+        <button id="modal-confirm-btn" class="btn btn-danger">Clear History</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <main class="app-container">
+    
+    <!-- Header Section -->
+    <header class="app-header">
+      <div class="header-branding">
+        <div class="title-row">
+          <span class="live-pulse-container" title="Clipboard Listener Active">
+            <span class="pulse-ring"></span>
+            <span class="pulse-dot"></span>
+          </span>
+          <h1 class="app-title">QuickClip</h1>
+          <span class="badge-status">Vault Active</span>
+        </div>
+        <p class="app-subtitle">Local Clipboard Vault</p>
+      </div>
+      
+      <div class="header-actions">
+        <button id="sync-clipboard-btn" class="btn btn-primary-light" title="Read text directly from system clipboard">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+            <path d="M12 11v6"></path>
+            <path d="m9 14 3-3 3 3"></path>
+          </svg>
+          Sync Clipboard
+        </button>
+        <button id="clear-unpinned-btn" class="btn btn-text" title="Delete all items that are not pinned">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          Clear Unpinned History
+        </button>
+      </div>
+    </header>
+
+    <!-- Manual Capture Input Card -->
+    <section class="capture-section">
+      <div class="capture-card">
+        <div class="capture-input-wrap">
+          <textarea 
+            id="capture-input" 
+            class="capture-textarea" 
+            placeholder="Paste or type snippets, code, colors, or URLs..." 
+            rows="3"
+            aria-label="New clip text input"
+          ></textarea>
+        </div>
+        <div class="capture-footer">
+          <div class="capture-meta">
+            <span id="auto-detect-badge" class="type-badge badge-neutral">Auto-Detect: Text</span>
+            <span id="char-counter" class="char-counter">0 chars</span>
+          </div>
+          <div class="capture-buttons">
+            <button id="add-clip-btn" class="btn btn-accent">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Add Clip
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Search & Filter Controls -->
+    <section class="controls-section">
+      <!-- Search Bar -->
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input 
+          type="text" 
+          id="search-input" 
+          class="search-input" 
+          placeholder="Search snippets, links, code, or color codes..." 
+          aria-label="Search snippets"
+          autocomplete="off"
+        >
+        <button id="search-clear-btn" class="search-clear-btn hidden" title="Clear search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Floating Category Filter Pills -->
+      <nav class="filter-pills-bar" aria-label="Snippet category filters">
+        <button class="filter-pill active" data-category="all">
+          <span class="pill-label">All</span>
+          <span class="pill-count" id="count-all">0</span>
+        </button>
+        <button class="filter-pill" data-category="Code">
+          <span class="pill-label">Code</span>
+          <span class="pill-count" id="count-code">0</span>
+        </button>
+        <button class="filter-pill" data-category="Link">
+          <span class="pill-label">Link</span>
+          <span class="pill-count" id="count-link">0</span>
+        </button>
+        <button class="filter-pill" data-category="Color">
+          <span class="pill-label">Color</span>
+          <span class="pill-count" id="count-color">0</span>
+        </button>
+        <button class="filter-pill" data-category="Text">
+          <span class="pill-label">Text</span>
+          <span class="pill-count" id="count-text">0</span>
+        </button>
+      </nav>
+    </section>
+
+    <!-- Main Vault Feed -->
+    <div class="feed-container">
+      
+      <!-- Pinned Snippets Section (Visible only when items are pinned) -->
+      <section id="pinned-section" class="feed-section hidden">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <svg class="section-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="17" x2="12" y2="22"></line>
+              <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path>
+            </svg>
+            <h2 class="section-title">Pinned Snippets</h2>
+          </div>
+          <span id="pinned-count-tag" class="section-tag">0 pinned</span>
+        </div>
+        <div id="pinned-list" class="clips-list" role="list"></div>
+      </section>
+
+      <!-- Recent Clips Section -->
+      <section id="recent-section" class="feed-section">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <svg class="section-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            <h2 class="section-title">Recent Clips</h2>
+          </div>
+          <span id="recent-count-tag" class="section-tag">0 clips</span>
+        </div>
+        <div id="recent-list" class="clips-list" role="list"></div>
+      </section>
+
+      <!-- Empty State -->
+      <div id="empty-state" class="empty-state hidden">
+        <div class="empty-icon-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+            <line x1="9" y1="12" x2="15" y2="12"></line>
+            <line x1="9" y1="16" x2="13" y2="16"></line>
+          </svg>
+        </div>
+        <h3 class="empty-title">Vault is empty</h3>
+        <p class="empty-description">Copy text from any app or paste directly here. You can also click "Sync Clipboard" to capture immediately.</p>
+      </div>
+
+    </div>
+
+    <!-- Footer Information -->
+    <footer class="app-footer">
+      <div class="footer-tip">
+        <span class="footer-key">Ctrl + V</span> Paste anywhere to capture
+        <span class="footer-divider">|</span>
+        <span class="footer-key">Esc</span> Reset search
+      </div>
+      <div class="footer-storage-note">
+        All records stay private and stored locally in your browser.
+      </div>
+    </footer>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
